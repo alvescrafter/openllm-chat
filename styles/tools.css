@@ -1,0 +1,234 @@
+/* ═══════════════════════════════════════════════════════════════
+   OpenLLM Chat — Tool Status & Indicator Styles
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Tool Call Indicator ─── */
+.tool-call-indicator {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--tool-status-bg);
+  border: 1px solid var(--tool-status-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--tool-status-text);
+  animation: fadeInUp 0.3s ease;
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-call-icon {
+  font-size: 16px;
+}
+
+.tool-call-name {
+  font-weight: 600;
+}
+
+.tool-call-status {
+  margin-left: auto;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-call-status .spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--tool-status-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.tool-call-query {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.05);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+[data-theme="dark"] .tool-call-query {
+  background: rgba(255,255,255,0.05);
+}
+
+/* ─── Tool Result Card ─── */
+.tool-result-card {
+  margin: 8px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.tool-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background var(--transition);
+}
+
+.tool-result-header:hover {
+  background: var(--bg-hover);
+}
+
+.tool-result-header .result-icon {
+  font-size: 14px;
+}
+
+.tool-result-header .result-title {
+  flex: 1;
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+.tool-result-header .result-count {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 10px;
+}
+
+.tool-result-header .result-chevron {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.tool-result-header.expanded .result-chevron {
+  transform: rotate(180deg);
+}
+
+.tool-result-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.tool-result-body.expanded {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.tool-result-content {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ─── Search Results ─── */
+.search-result-item {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-title {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.search-result-title:hover {
+  text-decoration: underline;
+}
+
+.search-result-url {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+
+.search-result-snippet {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ─── Visit Website Result ─── */
+.visit-result-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.visit-result-headings {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--accent);
+}
+
+.visit-result-headings h4 {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin: 4px 0;
+}
+
+.visit-result-content {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.visit-result-links {
+  margin-top: 8px;
+}
+
+.visit-result-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 2px 0;
+}
+
+.visit-result-link:hover {
+  text-decoration: underline;
+}
+
+/* ─── Tool Error ─── */
+.tool-error {
+  margin: 8px 0;
+  padding: 10px 14px;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: var(--radius-md);
+  color: var(--error-text);
+  font-size: 13px;
+}
+
+.tool-error .error-icon {
+  font-size: 16px;
+  margin-right: 6px;
+}

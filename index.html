@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenLLM Chat</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/sidebar.css">
+  <link rel="stylesheet" href="styles/chat.css">
+  <link rel="stylesheet" href="styles/code-preview.css">
+  <link rel="stylesheet" href="styles/tools.css">
+
+  <!-- Prism.js for code highlighting (lazy-loaded later) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" id="prism-theme">
+</head>
+<body>
+  <div id="app" class="app-container">
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- SIDEBAR                                     -->
+    <!-- ═══════════════════════════════════════════ -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <span class="logo-icon">🤖</span>
+          <span class="logo-text">OpenLLM Chat</span>
+        </div>
+        <button id="sidebarClose" class="sidebar-close" title="Close sidebar">✕</button>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- New Chat Button -->
+        <button id="newChatBtn" class="new-chat-btn">
+          <span class="btn-icon">＋</span>
+          <span>New Chat</span>
+        </button>
+
+        <!-- Conversation List -->
+        <div class="sidebar-section">
+          <div class="section-header" data-section="conversations">
+            <span class="section-icon">💬</span>
+            <span class="section-title">Conversations</span>
+            <span class="section-chevron">▸</span>
+          </div>
+          <div id="conversationList" class="section-content">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- LLM Configuration -->
+        <div class="sidebar-section">
+          <div class="section-header" data-section="llm">
+            <span class="section-icon">🧠</span>
+            <span class="section-title">LLM Config</span>
+            <span class="section-chevron">▸</span>
+          </div>
+          <div id="llmConfigPanel" class="section-content">
+            <div class="config-group">
+              <label for="providerSelect">Provider</label>
+              <select id="providerSelect">
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google">Google Gemini</option>
+                <option value="ollama">Ollama</option>
+                <option value="lmstudio">LM Studio</option>
+                <option value="groq">Groq</option>
+                <option value="mistral">Mistral</option>
+                <option value="custom">Custom OpenAI-compat</option>
+              </select>
+            </div>
+
+            <div class="config-group">
+              <label for="baseUrlInput">Base URL</label>
+              <input type="url" id="baseUrlInput" placeholder="https://api.openai.com/v1">
+            </div>
+
+            <div class="config-group">
+              <label for="apiKeyInput">API Key</label>
+              <div class="input-with-toggle">
+                <input type="password" id="apiKeyInput" placeholder="sk-...">
+                <button id="toggleKeyVis" class="input-toggle" title="Show/hide key">👁</button>
+              </div>
+            </div>
+
+            <div class="config-group">
+              <label for="modelSelect">Model</label>
+              <div class="input-with-button">
+                <select id="modelSelect">
+                  <option value="">Select a model...</option>
+                </select>
+                <button id="refreshModelsBtn" class="input-btn" title="Refresh models">🔄</button>
+              </div>
+            </div>
+
+            <div class="config-group">
+              <label for="toolCallFormat">Tool Call Format</label>
+              <select id="toolCallFormat">
+                <option value="auto">Auto-detect</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google">Google</option>
+                <option value="prompt">Prompt Injection</option>
+                <option value="off">Off (no tools)</option>
+              </select>
+            </div>
+
+            <div class="config-group">
+              <label for="systemPromptInput">System Prompt</label>
+              <textarea id="systemPromptInput" rows="3" placeholder="You are a helpful assistant...">You are a helpful assistant.</textarea>
+            </div>
+
+            <div class="config-group">
+              <label for="temperatureSlider">Temperature: <span id="tempValue">0.7</span></label>
+              <input type="range" id="temperatureSlider" min="0" max="2" step="0.1" value="0.7">
+            </div>
+
+            <div class="config-group">
+              <label for="maxTokensInput">Max Tokens</label>
+              <input type="number" id="maxTokensInput" value="4096" min="1" max="128000">
+            </div>
+
+            <div class="config-actions">
+              <button id="testConnectionBtn" class="btn btn-secondary">Test Connection</button>
+              <button id="saveConfigBtn" class="btn btn-primary">Save</button>
+            </div>
+            <div id="connectionStatus" class="connection-status"></div>
+          </div>
+        </div>
+
+        <!-- TTS Configuration -->
+        <div class="sidebar-section">
+          <div class="section-header" data-section="tts">
+            <span class="section-icon">🎙️</span>
+            <span class="section-title">Text-to-Speech</span>
+            <span class="section-chevron">▸</span>
+          </div>
+          <div id="ttsConfigPanel" class="section-content">
+            <div class="config-group">
+              <label class="toggle-label">
+                <input type="checkbox" id="ttsEnabled">
+                <span>Enable TTS</span>
+              </label>
+            </div>
+
+            <div class="config-group">
+              <label for="ttsVoiceSelect">Voice</label>
+              <select id="ttsVoiceSelect">
+                <option value="af_heart">🚺❤️ American Female - Heart</option>
+                <option value="af_bella">🚺 American Female - Bella</option>
+                <option value="af_nicole">🚺 American Female - Nicole</option>
+                <option value="af_sarah">🚺 American Female - Sarah</option>
+                <option value="am_adam">🚹 American Male - Adam</option>
+                <option value="am_michael">🚹 American Male - Michael</option>
+                <option value="bf_emma">🚺 British Female - Emma</option>
+                <option value="bm_george">🚹 British Male - George</option>
+              </select>
+            </div>
+
+            <div class="config-group">
+              <label for="ttsSpeedSlider">Speed: <span id="ttsSpeedValue">1.0</span>x</label>
+              <input type="range" id="ttsSpeedSlider" min="0.5" max="2.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="config-group">
+              <label for="ttsVolumeSlider">Volume: <span id="ttsVolumeValue">0.8</span></label>
+              <input type="range" id="ttsVolumeSlider" min="0" max="1" step="0.1" value="0.8">
+            </div>
+
+            <div class="config-group">
+              <label class="toggle-label">
+                <input type="checkbox" id="ttsAutoRead">
+                <span>Auto-read assistant responses</span>
+              </label>
+            </div>
+
+            <div class="config-group">
+              <label class="toggle-label">
+                <input type="checkbox" id="ttsAutoReadUser">
+                <span>Auto-read user messages</span>
+              </label>
+            </div>
+
+            <div id="ttsStatus" class="tts-status">
+              <span class="status-dot status-offline"></span>
+              <span>Model not loaded</span>
+            </div>
+
+            <div class="config-actions">
+              <button id="loadTtsModelBtn" class="btn btn-secondary">Load Model</button>
+              <button id="clearTtsCacheBtn" class="btn btn-ghost">Clear Cache</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tools Configuration -->
+        <div class="sidebar-section">
+          <div class="section-header" data-section="tools">
+            <span class="section-icon">🔧</span>
+            <span class="section-title">Tools</span>
+            <span class="section-chevron">▸</span>
+          </div>
+          <div id="toolsConfigPanel" class="section-content">
+            <div class="config-group">
+              <label for="corsProxyMode">CORS Proxy</label>
+              <select id="corsProxyMode">
+                <option value="none">None (same-origin only)</option>
+                <option value="node" selected>Node.js Proxy (port 8321)</option>
+                <option value="searxng">SearXNG Instance</option>
+                <option value="custom">Custom Proxy URL</option>
+              </select>
+            </div>
+
+            <div id="corsProxyConfig" class="cors-proxy-config">
+              <div id="nodeProxyConfig" class="proxy-config-section">
+                <div class="proxy-status">
+                  <span class="status-dot status-offline" id="proxyStatusDot"></span>
+                  <span id="proxyStatusText">Not running</span>
+                </div>
+                <div class="config-actions">
+                  <button id="startProxyBtn" class="btn btn-secondary btn-sm">Start Proxy</button>
+                </div>
+              </div>
+
+              <div id="searxngConfig" class="proxy-config-section" style="display:none">
+                <div class="config-group">
+                  <label for="searxngUrl">SearXNG URL</label>
+                  <input type="url" id="searxngUrl" value="http://localhost:8888" placeholder="http://localhost:8888">
+                </div>
+                <button id="testSearxngBtn" class="btn btn-secondary btn-sm">Test Connection</button>
+              </div>
+
+              <div id="customProxyConfig" class="proxy-config-section" style="display:none">
+                <div class="config-group">
+                  <label for="customProxyUrl">Proxy URL</label>
+                  <input type="url" id="customProxyUrl" placeholder="https://my-proxy.example.com/proxy">
+                </div>
+                <button id="testCustomProxyBtn" class="btn btn-secondary btn-sm">Test Connection</button>
+              </div>
+            </div>
+
+            <div class="config-group">
+              <label for="ddgPageSize">DDG Results Per Page</label>
+              <input type="number" id="ddgPageSize" value="5" min="1" max="10">
+            </div>
+
+            <div class="config-group">
+              <label for="ddgSafeSearch">Safe Search</label>
+              <select id="ddgSafeSearch">
+                <option value="strict">Strict</option>
+                <option value="moderate" selected>Moderate</option>
+                <option value="off">Off</option>
+              </select>
+            </div>
+
+            <div class="config-group">
+              <label for="visitContentLimit">Visit Content Limit (chars)</label>
+              <input type="number" id="visitContentLimit" value="3000" min="500" max="10000" step="500">
+            </div>
+
+            <div class="config-group">
+              <label for="visitMaxLinks">Max Links to Extract</label>
+              <input type="number" id="visitMaxLinks" value="20" min="0" max="200">
+            </div>
+
+            <div class="config-group">
+              <label for="visitMaxImages">Max Images to Extract</label>
+              <input type="number" id="visitMaxImages" value="5" min="0" max="50">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <button id="themeToggle" class="sidebar-footer-btn" title="Toggle theme">🌓</button>
+        <button id="exportBtn" class="sidebar-footer-btn" title="Export conversations">📤</button>
+        <button id="importBtn" class="sidebar-footer-btn" title="Import conversations">📥</button>
+        <input type="file" id="importFileInput" accept=".json" style="display:none">
+      </div>
+    </aside>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- MAIN CHAT AREA                              -->
+    <!-- ═══════════════════════════════════════════ -->
+    <main id="mainArea" class="main-area">
+      <!-- Header Bar -->
+      <header class="chat-header">
+        <button id="sidebarToggle" class="header-btn" title="Toggle sidebar">☰</button>
+        <div class="header-title">
+          <span id="chatTitle" class="chat-title">New Chat</span>
+          <span id="modelBadge" class="model-badge">No model selected</span>
+        </div>
+        <div class="header-actions">
+          <button id="renameChatBtn" class="header-btn" title="Rename chat">✏️</button>
+          <button id="deleteChatBtn" class="header-btn" title="Delete chat">🗑️</button>
+        </div>
+      </header>
+
+      <!-- Messages Area -->
+      <div id="messagesArea" class="messages-area">
+        <!-- Welcome Screen (shown when no messages) -->
+        <div id="welcomeScreen" class="welcome-screen">
+          <div class="welcome-icon">🤖</div>
+          <h1 class="welcome-title">OpenLLM Chat</h1>
+          <p class="welcome-subtitle">Your web-connected AI assistant with search, browsing, and TTS</p>
+          <div class="welcome-suggestions">
+            <button class="suggestion-btn" data-prompt="What are the latest features in Python 3.13?">🔍 Search the web</button>
+            <button class="suggestion-btn" data-prompt="Visit https://news.ycombinator.com and summarize the top stories">🌐 Visit a website</button>
+            <button class="suggestion-btn" data-prompt="Write me a simple HTML page with a gradient background and centered text">💻 Generate HTML</button>
+            <button class="suggestion-btn" data-prompt="Explain quantum computing in simple terms">🧠 Ask anything</button>
+          </div>
+        </div>
+
+        <!-- Messages Container (populated dynamically) -->
+        <div id="messagesContainer" class="messages-container" style="display:none">
+        </div>
+
+        <!-- Streaming indicator -->
+        <div id="streamingIndicator" class="streaming-indicator" style="display:none">
+          <span class="streaming-dot"></span>
+          <span id="streamingText">Generating...</span>
+        </div>
+      </div>
+
+      <!-- Input Bar -->
+      <div class="input-area">
+        <div class="input-row">
+          <div class="input-wrapper">
+            <textarea id="messageInput" class="message-input" placeholder="Type a message..." rows="1"></textarea>
+            <button id="sendBtn" class="send-btn" title="Send message" disabled>▶</button>
+            <button id="stopBtn" class="stop-btn" title="Stop generation" style="display:none;">■</button>
+          </div>
+        </div>
+        <div class="input-toggles">
+          <button id="ddgToggle" class="toggle-btn active" title="DuckDuckGo Search">
+            <span class="toggle-icon">🔍</span>
+            <span class="toggle-label">DDG</span>
+          </button>
+          <button id="visitToggle" class="toggle-btn active" title="Visit Website">
+            <span class="toggle-icon">🌐</span>
+            <span class="toggle-label">Visit</span>
+          </button>
+          <button id="ttsToggle" class="toggle-btn" title="Text-to-Speech">
+            <span class="toggle-icon">🔊</span>
+            <span class="toggle-label">TTS</span>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- SCRIPTS (loaded in order)                   -->
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Utilities -->
+  <script src="src/utils/id.js"></script>
+  <script src="src/utils/markdown.js"></script>
+  <script src="src/utils/cors-proxy.js"></script>
+
+  <!-- State -->
+  <script src="src/state/store.js"></script>
+
+  <!-- LLM Providers -->
+  <script src="src/llm/providers/openai.js"></script>
+  <script src="src/llm/providers/anthropic.js"></script>
+  <script src="src/llm/providers/google.js"></script>
+  <script src="src/llm/providers/ollama.js"></script>
+  <script src="src/llm/providers/lm-studio.js"></script>
+  <script src="src/llm/provider-registry.js"></script>
+  <script src="src/llm/streaming-handler.js"></script>
+  <script src="src/llm/tool-call-parser.js"></script>
+
+  <!-- Tools -->
+  <script src="src/tools/tool-definitions.js"></script>
+  <script src="src/tools/duckduckgo/html-parser.js"></script>
+  <script src="src/tools/duckduckgo/search.js"></script>
+  <script src="src/tools/duckduckgo/image-search.js"></script>
+  <script src="src/tools/visit-website/fetcher.js"></script>
+  <script src="src/tools/visit-website/content-extractor.js"></script>
+  <script src="src/tools/visit-website/image-handler.js"></script>
+  <script src="src/tools/orchestrator.js"></script>
+
+  <!-- TTS -->
+  <script src="src/tts/kokoro-engine.js"></script>
+  <script src="src/tts/audio-player.js"></script>
+  <script src="src/tts/streaming-tts.js"></script>
+
+  <!-- Chat -->
+  <script src="src/chat/chat-manager.js"></script>
+  <script src="src/chat/message-renderer.js"></script>
+  <script src="src/chat/code-actions.js"></script>
+  <script src="src/chat/tts-buttons.js"></script>
+
+  <!-- Code Preview -->
+  <script src="src/code-preview/preview-window.js"></script>
+
+  <!-- Sidebar -->
+  <script src="src/sidebar/llm-config-panel.js"></script>
+  <script src="src/sidebar/tts-config-panel.js"></script>
+  <script src="src/sidebar/tools-config-panel.js"></script>
+  <script src="src/sidebar/sidebar.js"></script>
+
+  <!-- App Bootstrap -->
+  <script src="src/app.js"></script>
+</body>
+</html>
