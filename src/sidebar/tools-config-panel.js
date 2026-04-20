@@ -123,9 +123,9 @@ const ToolsConfigPanel = (() => {
 
   function loadState() {
     const state = AppStore.state;
-    const corsProxy = state.corsProxy || { mode: 'node', nodePort: 8321, searxngUrl: 'http://localhost:8888', customUrl: '' };
+    const corsProxy = state.corsProxy || { mode: 'none', nodePort: 8321, searxngUrl: 'http://localhost:8888', customUrl: '' };
 
-    document.getElementById('corsProxyMode').value = corsProxy.mode || 'node';
+    document.getElementById('corsProxyMode').value = corsProxy.mode || 'none';
     document.getElementById('nodeProxyConfig').style.display = corsProxy.mode === 'node' ? 'block' : 'none';
     document.getElementById('searxngConfig').style.display = corsProxy.mode === 'searxng' ? 'block' : 'none';
     document.getElementById('customProxyConfig').style.display = corsProxy.mode === 'custom' ? 'block' : 'none';
