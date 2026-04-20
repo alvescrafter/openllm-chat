@@ -22,7 +22,7 @@ const AppStore = (() => {
     visitWebsiteEnabled: true,
     ddgConfig: { pageSize: 5, safeSearch: 'moderate' },
     visitConfig: { maxLinks: 20, maxImages: 5, contentLimit: 3000 },
-    corsProxy: { mode: 'node', nodePort: 8321, searxngUrl: 'http://localhost:8888', customUrl: '' },
+    corsProxy: { mode: 'none', nodePort: 8321, searxngUrl: 'http://localhost:8888', customUrl: '' },
 
     // TTS
     ttsEnabled: false,

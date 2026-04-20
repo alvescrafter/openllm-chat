@@ -43,14 +43,22 @@ const CorsProxy = (() => {
    */
   async function fetchWithProxy(url, options = {}) {
     const proxiedUrl = getProxiedUrl(url);
-    const defaultHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+
+    // Only add browser-like headers for non-API requests (HTML page fetches)
+    // For API requests (JSON content type), skip the default headers
+    const isApiRequest = (options.headers && (
+      (options.headers['Content-Type'] && options.headers['Content-Type'].includes('json')) ||
+      options.headers['Authorization'] ||
+      options.headers['x-api-key']
+    ));
+
+    const defaultHeaders = isApiRequest ? {} : {
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
     };
 
     // Don't override Referer for proxied requests
-    if (!proxiedUrl.includes('localhost') && !proxiedUrl.includes('127.0.0.1')) {
+    if (!isApiRequest && !proxiedUrl.includes('localhost') && !proxiedUrl.includes('127.0.0.1')) {
       try {
         const urlObj = new URL(url);
         defaultHeaders['Referer'] = `${urlObj.protocol}//${urlObj.hostname}/`;

@@ -1,148 +1,103 @@
 /**
  * OpenLLM Chat — Kokoro TTS Engine
- * Lazy-loads the Kokoro TTS model in a Web Worker.
- * Supports WebGPU (preferred) and WASM fallback.
+ * Runs natively in the browser using kokoro-js (loaded via dynamic import).
+ * Uses WebGPU when available, falls back to WASM.
+ * Model is downloaded from HuggingFace and cached in IndexedDB.
  */
 
 const KokoroEngine = (() => {
-  let ttsWorker = null;
+  let model = null;
   let isModelLoaded = false;
   let isModelLoading = false;
   let audioContext = null;
-  let audioQueue = [];
-  let isPlaying = false;
   let currentSource = null;
-  let resolveSpeak = null;
+  let isPlaying = false;
+
+  const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 
   /**
-   * Initialize the TTS engine.
+   * Ensure AudioContext is ready.
    */
-  async function init() {
-    if (ttsWorker) return;
-
-    // Create audio context
+  function ensureAudioContext() {
     if (!audioContext) {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
     }
-
-    // Create web worker for TTS inference
-    const workerCode = `
-      let model = null;
-      let isLoaded = false;
-
-      self.onmessage = async function(e) {
-        const { type, data } = e.data;
-
-        if (type === 'load') {
-          try {
-            // Dynamically import kokoro-js
-            const { KokoroTTS } = await import('https://cdn.jsdelivr.net/npm/kokoro-js@0.1.0/dist/kokoro.min.js');
-            
-            const modelSize = data.modelSize || 'q8';
-            const modelUrl = modelSize === 'q8' 
-              ? 'https://huggingface.co/hexgrad/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx'
-              : 'https://huggingface.co/hexgrad/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx';
-            
-            const voicesUrl = 'https://huggingface.co/hexgrad/Kokoro-82M-v1.0-ONNX/resolve/main/voices.json';
-
-            model = new KokoroTTS({
-              modelUrl,
-              voicesUrl,
-              onnxWasmPaths: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/',
-            });
-
-            await model.init();
-            isLoaded = true;
-
-            self.postMessage({ type: 'loaded', data: { backend: model.backend || 'wasm' } });
-          } catch (error) {
-            self.postMessage({ type: 'error', data: { message: error.message } });
-          }
-        }
-
-        if (type === 'speak') {
-          if (!isLoaded || !model) {
-            self.postMessage({ type: 'error', data: { message: 'Model not loaded' } });
-            return;
-          }
-
-          try {
-            const { text, voice, speed } = data;
-            const audio = await model.synthesize(text, {
-              voice: voice || 'af_heart',
-              speed: speed || 1.0,
-            });
-
-            // Transfer the audio buffer
-            self.postMessage({ 
-              type: 'audio', 
-              data: { 
-                audio: audio.audio,
-                sampleRate: audio.sampleRate,
-                text: data.text,
-              } 
-            }, [audio.audio.buffer]);
-          } catch (error) {
-            self.postMessage({ type: 'error', data: { message: error.message } });
-          }
-        }
-
-        if (type === 'status') {
-          self.postMessage({ type: 'status', data: { isLoaded, isLoading: false } });
-        }
-      };
-    `;
-
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
-    const workerUrl = URL.createObjectURL(blob);
-    ttsWorker = new Worker(workerUrl);
-
-    ttsWorker.onmessage = (e) => {
-      const { type, data } = e.data;
-
-      if (type === 'loaded') {
-        isModelLoaded = true;
-        isModelLoading = false;
-        AppStore.update({ ttsModelLoaded: true, ttsModelLoading: false, ttsBackend: data.backend });
-        updateTTSStatus('loaded', `Model loaded (${data.backend})`);
-      } else if (type === 'audio') {
-        playAudioBuffer(data.audio, data.sampleRate);
-      } else if (type === 'error') {
-        console.error('[KokoroEngine] Error:', data.message);
-        isModelLoading = false;
-        AppStore.update({ ttsModelLoading: false });
-        updateTTSStatus('error', `Error: ${data.message}`);
-      }
-    };
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    return audioContext;
   }
 
   /**
    * Load the TTS model.
+   * Downloads kokoro-js from CDN, then downloads the ONNX model from HuggingFace.
+   * Everything is cached in IndexedDB for subsequent loads.
    */
-  async function loadModel(modelSize = 'q8') {
+  async function loadModel(dtype = 'q8f16') {
     if (isModelLoaded || isModelLoading) return;
 
     isModelLoading = true;
     AppStore.update({ ttsModelLoading: true });
-    updateTTSStatus('loading', 'Loading model...');
+    updateTTSStatus('loading', 'Loading TTS model...');
 
-    await init();
+    try {
+      // Dynamically import kokoro-js from CDN
+      updateTTSStatus('loading', 'Downloading TTS engine...');
+      const { KokoroTTS } = await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
 
-    ttsWorker.postMessage({
-      type: 'load',
-      data: { modelSize },
-    });
+      // Load the model — this downloads from HuggingFace and caches in IndexedDB
+      updateTTSStatus('loading', 'Downloading TTS model (first time may take a minute)...');
+
+      // Try WebGPU first, fall back to WASM
+      let backend = 'wasm';
+      try {
+        if (navigator.gpu) {
+          model = await KokoroTTS.from_pretrained(MODEL_ID, {
+            dtype: dtype,
+            device: 'webgpu',
+          });
+          backend = 'webgpu';
+        } else {
+          model = await KokoroTTS.from_pretrained(MODEL_ID, {
+            dtype: dtype,
+            device: 'wasm',
+          });
+        }
+      } catch (gpuError) {
+        console.warn('[KokoroEngine] WebGPU failed, falling back to WASM:', gpuError.message);
+        model = await KokoroTTS.from_pretrained(MODEL_ID, {
+          dtype: dtype,
+          device: 'wasm',
+        });
+      }
+
+      isModelLoaded = true;
+      isModelLoading = false;
+      AppStore.update({ ttsModelLoaded: true, ttsModelLoading: false, ttsBackend: backend });
+      updateTTSStatus('loaded', `Model loaded (${backend})`);
+      console.log(`[KokoroEngine] Model loaded successfully (${backend})`);
+
+    } catch (error) {
+      console.error('[KokoroEngine] Failed to load model:', error);
+      isModelLoading = false;
+      AppStore.update({ ttsModelLoading: false });
+      updateTTSStatus('error', `Error: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
    * Speak text aloud.
+   * @param {string} text - The text to speak
+   * @param {object} options - { voice, speed }
+   * @returns {Promise<void>}
    */
   async function speak(text, options = {}) {
     if (!isModelLoaded) {
       await loadModel();
     }
 
-    if (!isModelLoaded) {
+    if (!isModelLoaded || !model) {
       throw new Error('TTS model failed to load');
     }
 
@@ -152,20 +107,86 @@ const KokoroEngine = (() => {
     // Stop any current playback
     stop();
 
-    return new Promise((resolve) => {
-      resolveSpeak = resolve;
+    // Clean text for TTS
+    const cleanText = text
+      .replace(/```[\s\S]*?```/g, ' code block ')
+      .replace(/[#*_~`]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/https?:\/\/\S+/g, 'link')
+      .trim();
 
-      // Split text into sentences for streaming
-      const sentences = splitIntoSentences(text);
+    if (!cleanText) return;
 
-      for (const sentence of sentences) {
-        if (sentence.trim()) {
-          ttsWorker.postMessage({
-            type: 'speak',
-            data: { text: sentence.trim(), voice, speed },
-          });
-        }
+    try {
+      updateTTSStatus('speaking', 'Speaking...');
+
+      // Generate audio using kokoro-js
+      const audio = await model.generate(cleanText, {
+        voice: voice,
+        speed: speed,
+      });
+
+      // Play the audio
+      await playAudio(audio);
+
+    } catch (error) {
+      console.error('[KokoroEngine] Speak error:', error);
+      updateTTSStatus('error', `Speak error: ${error.message}`);
+      throw error;
+    } finally {
+      if (isModelLoaded) {
+        updateTTSStatus('loaded', `Model loaded (${AppStore.state.ttsBackend || 'wasm'})`);
       }
+    }
+  }
+
+  /**
+   * Play audio from kokoro-js output.
+   * The audio object has .audio (Float32Array) and .sampling_rate (number).
+   */
+  async function playAudio(audio) {
+    const ctx = ensureAudioContext();
+
+    // kokoro-js returns a RawAudio object with .audio and .sampling_rate
+    const audioData = audio.audio || audio;
+    const sampleRate = audio.sampling_rate || audio.sampleRate || 24000;
+
+    let float32Data;
+    if (audioData instanceof Float32Array) {
+      float32Data = audioData;
+    } else if (audioData instanceof ArrayBuffer) {
+      float32Data = new Float32Array(audioData);
+    } else if (ArrayBuffer.isView(audioData)) {
+      float32Data = new Float32Array(audioData.buffer, audioData.byteOffset, audioData.length);
+    } else if (Array.isArray(audioData)) {
+      float32Data = new Float32Array(audioData);
+    } else {
+      // Try converting
+      float32Data = new Float32Array(audioData);
+    }
+
+    const audioBuffer = ctx.createBuffer(1, float32Data.length, sampleRate);
+    audioBuffer.getChannelData(0).set(float32Data);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = AppStore.state.ttsVolume || 0.8;
+
+    source.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    return new Promise((resolve) => {
+      source.onended = () => {
+        isPlaying = false;
+        currentSource = null;
+        resolve();
+      };
+
+      currentSource = source;
+      isPlaying = true;
+      source.start(0);
     });
   }
 
@@ -177,70 +198,7 @@ const KokoroEngine = (() => {
       try { currentSource.stop(); } catch { /* ignore */ }
       currentSource = null;
     }
-    audioQueue = [];
     isPlaying = false;
-    if (resolveSpeak) {
-      resolveSpeak();
-      resolveSpeak = null;
-    }
-  }
-
-  /**
-   * Play an audio buffer.
-   */
-  function playAudioBuffer(audioData, sampleRate) {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    // Resume audio context if suspended
-    if (audioContext.state === 'suspended') {
-      audioContext.resume();
-    }
-
-    let float32Data;
-    if (audioData instanceof Float32Array) {
-      float32Data = audioData;
-    } else if (audioData instanceof ArrayBuffer) {
-      float32Data = new Float32Array(audioData);
-    } else {
-      float32Data = new Float32Array(audioData);
-    }
-
-    const audioBuffer = audioContext.createBuffer(1, float32Data.length, sampleRate || 24000);
-    audioBuffer.getChannelData(0).set(float32Data);
-
-    const source = audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-
-    const gainNode = audioContext.createGain();
-    gainNode.gain.value = AppStore.state.ttsVolume || 0.8;
-
-    source.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    source.onended = () => {
-      isPlaying = false;
-      currentSource = null;
-      if (resolveSpeak) {
-        resolveSpeak();
-        resolveSpeak = null;
-      }
-    };
-
-    currentSource = source;
-    isPlaying = true;
-    source.start(0);
-  }
-
-  /**
-   * Split text into sentences for TTS.
-   */
-  function splitIntoSentences(text) {
-    return text
-      .replace(/([.!?])\s+/g, '$1\n')
-      .split('\n')
-      .filter(s => s.trim().length > 0);
   }
 
   /**
@@ -249,36 +207,73 @@ const KokoroEngine = (() => {
   function updateTTSStatus(status, message) {
     const statusEl = document.getElementById('ttsStatus');
     if (statusEl) {
-      const dotClass = status === 'loaded' ? 'status-online' : status === 'loading' ? 'status-loading' : status === 'error' ? 'status-error' : 'status-offline';
+      const dotClass = status === 'loaded' ? 'status-online'
+        : status === 'loading' ? 'status-loading'
+        : status === 'speaking' ? 'status-loading'
+        : status === 'error' ? 'status-error'
+        : 'status-offline';
       statusEl.innerHTML = `<span class="status-dot ${dotClass}"></span><span>${message}</span>`;
     }
   }
 
   /**
-   * Clear the TTS model cache.
+   * Clear the TTS model cache (IndexedDB).
    */
   async function clearCache() {
+    stop();
+    model = null;
+    isModelLoaded = false;
+
     try {
-      const dbs = await indexedDB.databases();
-      for (const db of dbs) {
-        if (db.name && db.name.includes('kokoro')) {
-          indexedDB.deleteDatabase(db.name);
+      // Delete IndexedDB databases that contain the model
+      if (indexedDB.databases) {
+        const dbs = await indexedDB.databases();
+        for (const db of dbs) {
+          if (db.name && (db.name.includes('kokoro') || db.name.includes('onnx') || db.name.includes('huggingface'))) {
+            indexedDB.deleteDatabase(db.name);
+          }
+        }
+      }
+
+      // Also try to clear Cache API entries
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        for (const name of cacheNames) {
+          if (name.includes('kokoro') || name.includes('onnx') || name.includes('huggingface')) {
+            await caches.delete(name);
+          }
         }
       }
     } catch (e) {
       console.warn('[KokoroEngine] Failed to clear cache:', e);
     }
-    isModelLoaded = false;
-    AppStore.update({ ttsModelLoaded: false });
+
+    AppStore.update({ ttsModelLoaded: false, ttsBackend: null });
     updateTTSStatus('offline', 'Model not loaded');
   }
 
+  /**
+   * Get list of available voices.
+   */
+  function listVoices() {
+    return [
+      { id: 'af_heart', name: 'Heart', flag: '🚺', trait: '❤️' },
+      { id: 'af_bella', name: 'Bella', flag: '🚺', trait: '🔥' },
+      { id: 'af_nicole', name: 'Nicole', flag: '🚺', trait: '🎧' },
+      { id: 'af_sarah', name: 'Sarah', flag: '🚺', trait: '' },
+      { id: 'am_adam', name: 'Adam', flag: '🚹', trait: '' },
+      { id: 'am_michael', name: 'Michael', flag: '🚹', trait: '' },
+      { id: 'bf_emma', name: 'Emma', flag: '🚺', trait: '' },
+      { id: 'bm_george', name: 'George', flag: '🚹', trait: '' },
+    ];
+  }
+
   return {
-    init,
     loadModel,
     speak,
     stop,
     clearCache,
+    listVoices,
     get isLoaded() { return isModelLoaded; },
     get isLoading() { return isModelLoading; },
   };
