@@ -249,6 +249,12 @@
 }
 
 /* ─── Proxy Config ─── */
+.cors-proxy-config {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .proxy-config-section {
   padding: 8px 0;
 }

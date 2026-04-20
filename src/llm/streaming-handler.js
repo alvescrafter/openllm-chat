@@ -72,13 +72,54 @@ const StreamingHandler = (() => {
       allToolCalls.push(...toolCalls);
 
       // Add assistant message with tool calls to conversation
-      messages.push({
-        role: 'assistant',
-        content: textContent || '',
-        tool_calls: toolCalls,
-      });
+      const providerId = params.providerId || 'openai';
+      const toolFormat = ProviderRegistry.getEffectiveToolFormat(providerId, params.toolCallFormat);
 
-      // Execute each tool call
+      if (toolFormat === 'anthropic') {
+        // Anthropic format: assistant message with tool_use content blocks
+        const contentBlocks = [];
+        if (textContent) {
+          contentBlocks.push({ type: 'text', text: textContent });
+        }
+        for (const tc of toolCalls) {
+          let input = {};
+          try {
+            input = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : (tc.arguments || {});
+          } catch (e) { /* ignore */ }
+          contentBlocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input });
+        }
+        messages.push({ role: 'assistant', content: contentBlocks });
+      } else if (toolFormat === 'google') {
+        // Google format: assistant message with functionCall parts
+        const parts = [];
+        if (textContent) {
+          parts.push({ text: textContent });
+        }
+        for (const tc of toolCalls) {
+          let args = {};
+          try {
+            args = typeof tc.arguments === 'string' ? JSON.parse(tc.arguments) : (tc.arguments || {});
+          } catch (e) { /* ignore */ }
+          parts.push({ functionCall: { name: tc.name, args } });
+        }
+        messages.push({ role: 'assistant', parts });
+      } else {
+        // OpenAI format (default): assistant message with tool_calls
+        messages.push({
+          role: 'assistant',
+          content: textContent || '',
+          tool_calls: toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments || {}),
+            },
+          })),
+        });
+      }
+
+      // Execute each tool call and add results
       for (const toolCall of toolCalls) {
         onToolCallStart?.(toolCall);
 
@@ -93,15 +134,42 @@ const StreamingHandler = (() => {
 
         onToolResult?.(toolCall);
 
-        // Add tool result to messages (OpenAI format)
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          name: toolCall.name,
-          content: typeof toolCall.result === 'string'
-            ? toolCall.result
-            : JSON.stringify(toolCall.result),
-        });
+        // Add tool result to messages in provider-specific format
+        const resultContent = typeof toolCall.result === 'string'
+          ? toolCall.result
+          : JSON.stringify(toolCall.result);
+
+        if (toolFormat === 'anthropic') {
+          // Anthropic format: user message with tool_result content blocks
+          messages.push({
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              tool_use_id: toolCall.id,
+              content: resultContent,
+            }],
+          });
+        } else if (toolFormat === 'google') {
+          // Google format: function response part
+          let responseObj;
+          try {
+            responseObj = typeof toolCall.result === 'string' ? JSON.parse(toolCall.result) : toolCall.result;
+          } catch (e) {
+            responseObj = { result: resultContent };
+          }
+          messages.push({
+            role: 'function',
+            parts: [{ functionResponse: { name: toolCall.name, response: responseObj } }],
+          });
+        } else {
+          // OpenAI format (default)
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            name: toolCall.name,
+            content: resultContent,
+          });
+        }
       }
     }
 

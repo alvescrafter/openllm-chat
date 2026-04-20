@@ -35,6 +35,8 @@ const ToolsConfigPanel = (() => {
           mode,
         },
       });
+
+      updateProxyStatus(mode);
     });
 
     // Start proxy button (just shows instructions)
@@ -132,6 +134,8 @@ const ToolsConfigPanel = (() => {
     document.getElementById('searxngUrl').value = corsProxy.searxngUrl || 'http://localhost:8888';
     document.getElementById('customProxyUrl').value = corsProxy.customUrl || '';
 
+    updateProxyStatus(corsProxy.mode || 'none');
+
     const ddgConfig = state.ddgConfig || {};
     document.getElementById('ddgPageSize').value = ddgConfig.pageSize || 5;
     document.getElementById('ddgSafeSearch').value = ddgConfig.safeSearch || 'moderate';
@@ -140,6 +144,26 @@ const ToolsConfigPanel = (() => {
     document.getElementById('visitContentLimit').value = visitConfig.contentLimit || 3000;
     document.getElementById('visitMaxLinks').value = visitConfig.maxLinks || 20;
     document.getElementById('visitMaxImages').value = visitConfig.maxImages || 5;
+  }
+
+  /**
+   * Update the proxy status indicator in the sidebar.
+   */
+  function updateProxyStatus(mode) {
+    const dot = document.getElementById('proxyStatusDot');
+    const text = document.getElementById('proxyStatusText');
+    if (!dot || !text) return;
+
+    const statusMap = {
+      none: { cls: 'status-offline', label: 'Direct (no proxy)' },
+      node: { cls: 'status-loading', label: 'Node.js proxy (port 8321)' },
+      searxng: { cls: 'status-loading', label: 'SearXNG' },
+      custom: { cls: 'status-loading', label: 'Custom proxy' },
+    };
+
+    const status = statusMap[mode] || statusMap.none;
+    dot.className = `status-dot ${status.cls}`;
+    text.textContent = status.label;
   }
 
   return { init, loadState };

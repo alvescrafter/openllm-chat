@@ -95,14 +95,26 @@ const ChatManager = (() => {
         systemPrompt,
         temperature: state.temperature,
         maxTokens: state.maxTokens,
+        toolCallFormat: state.toolCallFormat || 'auto',
       };
 
       let fullText = '';
+
+      // Start streaming TTS if auto-read is enabled
+      const useStreamingTTS = state.ttsAutoRead && state.ttsEnabled && window.StreamingTTS;
+      if (useStreamingTTS) {
+        StreamingTTS.startStreaming();
+      }
+
       const onToken = (token) => {
         fullText += token;
         AppStore.updateLastAssistantMessage(conv.id, fullText);
         // Trigger UI update
         renderMessages();
+        // Feed token to streaming TTS
+        if (useStreamingTTS) {
+          StreamingTTS.feedToken(token);
+        }
       };
 
       const onToolCallStart = (toolCall) => {
@@ -135,8 +147,11 @@ const ChatManager = (() => {
       AppStore.updateLastAssistantMessage(conv.id, fullText);
       renderMessages();
 
-      // Auto-TTS if enabled
-      if (state.ttsAutoRead && state.ttsEnabled) {
+      // End streaming TTS and flush remaining buffer
+      if (useStreamingTTS) {
+        StreamingTTS.endStreaming();
+      } else if (state.ttsAutoRead && state.ttsEnabled) {
+        // Fallback: speak the full text after generation (non-streaming)
         speakText(fullText);
       }
 
@@ -177,6 +192,13 @@ const ChatManager = (() => {
     if (abortController) {
       abortController.abort();
       abortController = null;
+    }
+    // Stop streaming TTS if active
+    if (window.StreamingTTS) {
+      StreamingTTS.stop();
+    }
+    if (window.KokoroEngine) {
+      KokoroEngine.stop();
     }
     isGenerating = false;
     AppStore.update({ isGenerating: false });

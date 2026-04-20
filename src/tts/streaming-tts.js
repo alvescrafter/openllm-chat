@@ -1,12 +1,14 @@
 /**
  * OpenLLM Chat — Streaming TTS
  * Real-time TTS that starts playing while the LLM is still generating.
+ * Sentences are queued and played sequentially to avoid overlap.
  */
 
 const StreamingTTS = (() => {
   let sentenceBuffer = '';
   let isStreaming = false;
   let sentenceQueue = [];
+  let isProcessingQueue = false;
 
   /**
    * Start streaming TTS for an ongoing LLM response.
@@ -16,6 +18,7 @@ const StreamingTTS = (() => {
     sentenceBuffer = '';
     isStreaming = true;
     sentenceQueue = [];
+    isProcessingQueue = false;
   }
 
   /**
@@ -28,7 +31,6 @@ const StreamingTTS = (() => {
     sentenceBuffer += token;
 
     // Check for sentence boundaries
-    const sentenceEnders = /[.!?]\s+/;
     const match = sentenceBuffer.match(/^(.*?[.!?])\s+(.*)$/s);
 
     if (match) {
@@ -36,7 +38,7 @@ const StreamingTTS = (() => {
       sentenceBuffer = match[2];
 
       if (sentence.length > 0) {
-        queueSentence(sentence);
+        enqueueSentence(sentence);
       }
     }
   }
@@ -46,25 +48,42 @@ const StreamingTTS = (() => {
    */
   function endStreaming() {
     if (sentenceBuffer.trim().length > 0) {
-      queueSentence(sentenceBuffer.trim());
+      enqueueSentence(sentenceBuffer.trim());
     }
     sentenceBuffer = '';
     isStreaming = false;
   }
 
   /**
-   * Queue a sentence for TTS playback.
+   * Enqueue a sentence for TTS playback and process the queue.
    */
-  async function queueSentence(sentence) {
+  function enqueueSentence(sentence) {
     // Skip code blocks and very short sentences
     if (sentence.startsWith('```') || sentence.startsWith('[TOOL_CALL]')) return;
     if (sentence.length < 5) return;
 
-    try {
-      await KokoroEngine.speak(sentence);
-    } catch (e) {
-      console.warn('[StreamingTTS] Error speaking sentence:', e);
+    sentenceQueue.push(sentence);
+    processQueue();
+  }
+
+  /**
+   * Process the sentence queue sequentially.
+   * Each sentence is spoken one at a time to avoid overlap.
+   */
+  async function processQueue() {
+    if (isProcessingQueue) return;
+    isProcessingQueue = true;
+
+    while (sentenceQueue.length > 0) {
+      const sentence = sentenceQueue.shift();
+      try {
+        await KokoroEngine.speak(sentence);
+      } catch (e) {
+        console.warn('[StreamingTTS] Error speaking sentence:', e);
+      }
     }
+
+    isProcessingQueue = false;
   }
 
   /**
@@ -74,6 +93,7 @@ const StreamingTTS = (() => {
     isStreaming = false;
     sentenceBuffer = '';
     sentenceQueue = [];
+    isProcessingQueue = false;
     KokoroEngine.stop();
   }
 
